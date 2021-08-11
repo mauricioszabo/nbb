@@ -137,3 +137,16 @@
                              (str val)))))
              (.finally (fn [_]
                          (done))))))
+
+(deftest deref-promises
+  (async done
+         (prn :RUNNING-PROM)
+         (-> (nbb/load-string "(defn promised-val [val]
+                                 (js/Promise. (fn [resolve]
+                                                (js/setTimeout #(resolve val) 200))))
+                               (+ @(promised-val 1) 2 @(promised-val 3))")
+             (.then (fn [val]
+                      (prn :END val)
+                      (is (= 6 val))))
+             (.finally (fn [_]
+                         (done))))))
