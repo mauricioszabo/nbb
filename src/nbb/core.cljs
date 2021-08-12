@@ -5,6 +5,9 @@
    ["path" :as path]
    [clojure.string :as str]
    [goog.object :as gobj]
+   [goog.string :as gstr]
+   [nbb.common :refer [core-ns]]
+   [nbb.io :as io]
    [sci.core :as sci]
    [sci.impl.vars :as vars]
    [shadow.esm :as esm]
@@ -15,8 +18,6 @@
 (def universe goog/global)
 
 (def cwd (.cwd js/process))
-
-(def core-ns (sci/create-ns 'clojure.core nil))
 
 (def command-line-args (sci/new-dynamic-var '*command-line-args* nil {:ns core-ns}))
 
@@ -53,7 +54,10 @@
           opts (apply hash-map opts)
           as (:as opts)
           refer (:refer opts)
-          rename (:rename opts)]
+          rename (:rename opts)
+          munged (munge libname)
+          current-ns-str (str @sci/ns)
+          current-ns (symbol current-ns-str)]
       (case libname
         ;; built-ins
         (reagent.core reagent.dom reagent.dom.server)
@@ -63,15 +67,14 @@
         (if (string? libname)
           ;; TODO: parse properties
           (let [[libname _properties] (str/split libname #"\\$")
-                internal-name (symbol (str "nbb.internal." (munge libname)))
+                internal-name (symbol (str "nbb.internal." munged))
                 mod (or
                      ;; skip loading if module was already loaded
                      (get @loaded-modules internal-name)
                      ;; else load module and register in loaded-modules under internal-name
                      (let [mod ((:require @ctx) libname)]
                        (swap! loaded-modules assoc internal-name mod)
-                       mod))
-                current-ns (symbol (str @sci/ns))]
+                       mod))]
             (when as
               (swap! sci-ctx sci/merge-opts {:classes {internal-name mod}})
               ;; HACK, we register the alias as a reference to the class
@@ -80,8 +83,8 @@
               (swap! (:env @sci-ctx) assoc-in [:namespaces current-ns :imports as] internal-name))
             (doseq [field refer]
               (let [mod-field (gobj/get mod (str field))
-                    internal-subname (str internal-name "$" field)]
-                ;; TODO: not necessary if property is already mapped
+                    ;; different namespaces can have different mappings
+                    internal-subname (str internal-name "$" current-ns-str "$" field)]
                 (swap! sci-ctx sci/merge-opts {:classes {internal-subname mod-field}})
                 ;; Repeat hack from above
                 (let [field (get rename field field)]
@@ -92,8 +95,7 @@
             ;; built-in namespace
             (do (sci/eval-form @sci-ctx (list 'require (list 'quote fst)))
                 (handle-libspecs (next libspecs)))
-            (let [munged (munge libname)
-                  file (str/replace (str munged) #"\." "/")
+            (let [file (str/replace (str munged) #"\." "/")
                   files [(str file ".cljs") (str file ".cljc")]
                   dirs (-> @ctx :classpath :dirs)
                   the-file (reduce (fn [_ dir]
@@ -119,7 +121,21 @@
                                               :rename (list 'quote rename))))))
                     (.then (fn [_]
                              (handle-libspecs (next libspecs)))))
-                (js/Promise.reject (js/Error. (str "Could not find namespace: " libname)))))))))
+                ;; here, let's look for classes
+                (if-let [clazz (get-in @sci-ctx [:class->opts libname :class])]
+                  (do (when as
+                        (swap! (:env @sci-ctx) assoc-in [:namespaces current-ns :imports as] libname))
+                      (doseq [field refer]
+                        (let [mod-field (gobj/get clazz (str field))
+                              internal-subname (str current-ns "$" munged "$" field)]
+                          (swap! sci-ctx sci/merge-opts {:classes {internal-subname mod-field}})
+                          ;; Repeat hack from above
+                          (let [field (get rename field field)]
+                            (swap! (:env @sci-ctx)
+                                   assoc-in
+                                   [:namespaces current-ns :imports field] internal-subname))))
+                      (handle-libspecs (next libspecs)))
+                  (js/Promise.reject (js/Error. (str "Could not find namespace: " libname))))))))))
     (js/Promise.resolve @sci/ns)))
 
 (defn eval-ns-form [ns-form]
@@ -219,9 +235,12 @@
 
 (reset! sci-ctx
         (sci/init
-         {:namespaces {'clojure.core {'prn prn
-                                      'print print
-                                      'println println
+         {:namespaces {'clojure.core {'*print-fn* io/print-fn
+                                      '*print-newline* io/print-newline
+                                      'with-out-str (sci/copy-var io/with-out-str core-ns)
+                                      'prn (sci/copy-var io/prn core-ns)
+                                      'print (sci/copy-var io/print core-ns)
+                                      'println (sci/copy-var io/println core-ns)
                                       '*command-line-args* command-line-args
                                       'time (sci/copy-var time core-ns)
                                       'system-time (sci/copy-var system-time core-ns)}
@@ -229,12 +248,12 @@
                        'nbb.core {'load-string (sci/copy-var load-string nbb-ns)
                                   'slurp (sci/copy-var slurp nbb-ns)
                                   'load-file (sci/copy-var load-file nbb-ns)
-                                  '*file* sci/file}
-                       ;; let's start with the most common ones
-                       'goog.object {'get gobj/get
-                                     'set gobj/set
-                                     'getValueByKeys gobj/getValueByKeys}}
-          :classes {'js universe :allow :all}
+                                  '*file* sci/file}}
+          :classes {'js universe :allow :all
+                    'goog.object #js {:get gobj/get
+                                      :set gobj/set
+                                      :getValueByKeys gobj/getValueByKeys}
+                    'goog.string #js {:StringBuffer gstr/StringBuffer}}
           :disable-arity-checks true}))
 
 (def ^:dynamic *file* sci/file) ;; make clj-kondo+lsp happy
