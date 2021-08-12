@@ -139,6 +139,7 @@
              (.finally (fn [_]
                          (done))))))
 
+(declare =>)
 (deftest deref-promises
   (async-test "derefs promises and make then sync"
     (check (=> 6 (nbb/load-string "(let [p (promises/delayed 200 1)]
