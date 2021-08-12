@@ -166,6 +166,14 @@
     (check (=> 6 (nbb/load-string "(let [p (promises/delayed 200 1)]
                                       (+ @p (inc 1) (+ @p (inc @p))))")))
 
+    (.then (nbb/load-string
+                        "(def p (promises/delayed 200 1))
+                         (def res (atom []))
+                         (swap! res conj (+ @p @p @p))
+                         (swap! res conj @p)
+                         (swap! res conj (inc @p))")
+           #(is (= [3 1 2] %)))
+
     (check (=> 6 (nbb/load-string "(let [p (promises/delayed 200 1)
                                          d (delay 1)]
                                       (+ @p (inc 1) (+ @p (inc @d))))")))))

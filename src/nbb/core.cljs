@@ -161,39 +161,33 @@
 (defn eval-expr
   "Evaluates top level forms asynchronously. Returns promise of last value."
   [prev-val reader]
-  (let [next-val (try
-                   (sci/parse-next @sci-ctx reader {:features #{:cljs}})
-                   (catch :default e
-                     (js/Promise.reject e)))]
+  (let [next-val (sci/parse-next @sci-ctx reader {:features #{:cljs}})]
     (if-not (= :sci.core/eof next-val)
       (if (seq? next-val)
         (let [fst (first next-val)]
-          (cond (= 'ns fst)
-                ;; async
-                (.then (eval-ns-form next-val)
-                       (fn [ns-obj]
-                         (eval-expr ns-obj reader)))
-                (= 'require fst)
-                ;; async
-                (.then (eval-require next-val)
-                       (fn [_]
-                         (eval-expr nil reader)))
-                :else
-                (try
-                  (eval-expr (sci/eval-form @sci-ctx next-val) reader)
-                     (catch :default e
-                       (js/Promise.reject e)))))
-        (try
-          (eval-expr (sci/eval-form @sci-ctx next-val) reader)
-             (catch :default e
-               (js/Promise.reject e))))
-      ;; wrap normal value in promise
-      (js/Promise.resolve prev-val))))
+          (cond
+            (= 'ns fst)
+            ;; async
+            (.then (eval-ns-form next-val)
+                   (fn [ns-obj]
+                     (eval-expr ns-obj reader)))
+            (= 'require fst)
+            ;; async
+            (.then (eval-require next-val)
+                   (fn [_]
+                     (eval-expr nil reader)))
+            :else
+            (let [prev (sci/eval-form @sci-ctx next-val)]
+              (if (instance? promises/SyncPromiseReturn prev)
+                (.then (:promise prev) #(eval-expr % reader))
+                (eval-expr prev reader))) ))
+        (eval-expr (sci/eval-form @sci-ctx next-val) reader))
+      prev-val)))
 
 (defn eval-string* [s]
   (with-async-bindings {sci/ns @sci/ns}
     (p/let [reader (sci/reader s)
-          result (eval-expr nil reader)]
+            result (eval-expr nil reader)]
       (cond-> result
               (instance? promises/SyncPromiseReturn result) :promise))))
 
