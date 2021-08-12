@@ -3,7 +3,8 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing async]]
             [nbb.core :as nbb]
-            [nbb.main :as main]))
+            [nbb.main :as main]
+            [check.async :refer [check async-test]]))
 
 ;; NOTE: CLJS only accepts one async + done per deftest
 ;; See https://clojurescript.org/tools/testing#async-testing.
@@ -139,14 +140,10 @@
                          (done))))))
 
 (deftest deref-promises
-  (async done
-         (prn :RUNNING-PROM)
-         (-> (nbb/load-string "(defn promised-val [val]
-                                 (js/Promise. (fn [resolve]
-                                                (js/setTimeout #(resolve val) 200))))
-                               (+ @(promised-val 1) 2 @(promised-val 3))")
-             (.then (fn [val]
-                      (prn :END val)
-                      (is (= 6 val))))
-             (.finally (fn [_]
-                         (done))))))
+  (async-test "derefs promises and make then sync"
+    (check (=> 6 (nbb/load-string "(let [p (promises/delayed 200 1)]
+                                      (+ @p (inc 1) (+ @p (inc @p))))")))
+
+    (check (=> 6 (nbb/load-string "(let [p (promises/delayed 200 1)
+                                         d (delay 1)]
+                                      (+ @p (inc 1) (+ @p (inc @d))))")))))

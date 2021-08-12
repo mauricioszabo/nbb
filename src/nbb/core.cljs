@@ -7,7 +7,9 @@
    [goog.object :as gobj]
    [sci.core :as sci]
    [sci.impl.vars :as vars]
-   [shadow.esm :as esm])
+   [shadow.esm :as esm]
+   [nbb.sync-promises :as promises]
+   [promesa.core :as p])
   (:require-macros [nbb.macros :refer [with-async-bindings]]))
 
 (def universe goog/global)
@@ -174,8 +176,10 @@
 
 (defn eval-string* [s]
   (with-async-bindings {sci/ns @sci/ns}
-    (let [reader (sci/reader s)]
-      (eval-expr nil reader))))
+    (p/let [reader (sci/reader s)
+          result (eval-expr nil reader)]
+      (cond-> result
+              (instance? promises/SyncPromiseReturn result) :promise))))
 
 (defn load-string
   "Asynchronously parses and evaluates string s. Returns promise."
@@ -221,6 +225,7 @@
                                       '*command-line-args* command-line-args
                                       'time (sci/copy-var time core-ns)
                                       'system-time (sci/copy-var system-time core-ns)}
+                       'promises {'delayed promesa.core/delay}
                        'nbb.core {'load-string (sci/copy-var load-string nbb-ns)
                                   'slurp (sci/copy-var slurp nbb-ns)
                                   'load-file (sci/copy-var load-file nbb-ns)
