@@ -177,6 +177,5 @@
                                          (swap! res conj p)
                                          (swap! res conj (+ p p))")))
 
-
     (check (=> 9 (nbb/load-string "(def a-prom (promises/delayed 99 9))
                                    (get {:a a-prom :b a-prom} :a)")))))
