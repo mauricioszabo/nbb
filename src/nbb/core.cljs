@@ -178,18 +178,14 @@
                      (eval-expr nil reader)))
             :else
             (let [prev (sci/eval-form @sci-ctx next-val)]
-              (if (instance? promises/SyncPromiseReturn prev)
-                (.then (:promise prev) #(eval-expr % reader))
-                (eval-expr prev reader))) ))
+              (eval-expr prev reader))))
         (eval-expr (sci/eval-form @sci-ctx next-val) reader))
       prev-val)))
 
 (defn eval-string* [s]
   (with-async-bindings {sci/ns @sci/ns}
-    (p/let [reader (sci/reader s)
-            result (eval-expr nil reader)]
-      (cond-> result
-              (instance? promises/SyncPromiseReturn result) :promise))))
+    (let [reader (sci/reader s)]
+      (eval-expr nil reader))))
 
 (defn load-string
   "Asynchronously parses and evaluates string s. Returns promise."
@@ -257,8 +253,4 @@
 ;;;; Scratch
 
 (comment
-
-  (vars/push-thread-bindings {sci/file "hello"})
-
-
-  )
+  (vars/push-thread-bindings {sci/file "hello"}))
