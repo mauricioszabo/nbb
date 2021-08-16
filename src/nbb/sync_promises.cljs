@@ -8,6 +8,7 @@
 
 (defrecord SyncPromiseReturn [promise])
 
+#_
 (extend-type js/Promise
   IMeta
   (-meta [this] (.-__meta__ this))
@@ -16,7 +17,7 @@
   (-with-meta [this m] (doto (.then this identity)
                              (aset "__meta__" m))))
 
-#_
+; #_
 (defn return-call
   [_ctx expr f analyzed-children stack]
   (utils/ctx-fn
@@ -38,8 +39,6 @@
                         (update acc :params conj {:return param})))
                     {:params [] :need-await? false}
                     evaled)]
-        (prn :WAIT? need-await? evaled)
-        (prn :WAIT-PARAMS params)
         (cond
           ; is-deref? (->SyncPromiseReturn evaled)
           need-await? (-> params
@@ -51,13 +50,13 @@
     expr
     stack))
 
-; #_
+#_
 (defn return-call
   [_ctx expr f analyzed-children stack]
   (utils/ctx-fn
    (fn [ctx bindings]
      (p/let [args (p/all (map #(eval/eval ctx bindings %) analyzed-children))]
-       ; (prn :ARG args)
+       (prn :ARG args)
        (apply f args)))
       ; (let [args (map #(eval/eval ctx bindings %) analyzed-children)]
       ;   (prn :ARG args)

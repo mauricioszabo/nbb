@@ -184,7 +184,7 @@
 
 (defn eval-string* [s]
   (with-async-bindings {sci/ns @sci/ns}
-    (let [reader (sci/reader s)]
+    (p/let [reader (sci/reader s)]
       (eval-expr nil reader))))
 
 (defn load-string
